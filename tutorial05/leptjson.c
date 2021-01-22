@@ -184,9 +184,11 @@ static int lept_parse_string(lept_context* c, lept_value* v) {
 static int lept_parse_value(lept_context* c, lept_value* v);
 
 static int lept_parse_array(lept_context* c, lept_value* v) {
+    // size_t head = c->top; ÄÚ´æÐ¹Â¶·çÏÕ
     size_t size = 0;
     int ret;
     EXPECT(c, '[');
+    lept_parse_whitespace(c);
     if (*c->json == ']') {
         c->json++;
         v->type = LEPT_ARRAY;
@@ -197,12 +199,17 @@ static int lept_parse_array(lept_context* c, lept_value* v) {
     for (;;) {
         lept_value e;
         lept_init(&e);
-        if ((ret = lept_parse_value(c, &e)) != LEPT_PARSE_OK)
-            return ret;
+        if ((ret = lept_parse_value(c, &e)) != LEPT_PARSE_OK) {
+            // c->top = head;
+            break;
+        }
+        lept_parse_whitespace(c);
         memcpy(lept_context_push(c, sizeof(lept_value)), &e, sizeof(lept_value));
         size++;
-        if (*c->json == ',')
+        if (*c->json == ',') {
             c->json++;
+            lept_parse_whitespace(c);
+        }
         else if (*c->json == ']') {
             c->json++;
             v->type = LEPT_ARRAY;
@@ -211,9 +218,16 @@ static int lept_parse_array(lept_context* c, lept_value* v) {
             memcpy(v->u.a.e = (lept_value*)malloc(size), lept_context_pop(c, size), size);
             return LEPT_PARSE_OK;
         }
-        else
-            return LEPT_PARSE_MISS_COMMA_OR_SQUARE_BRACKET;
+        else {
+            // c->top = head;
+            ret = LEPT_PARSE_MISS_COMMA_OR_SQUARE_BRACKET;
+            break;
+        }
     }
+    for (size_t i = 0; i < size; ++i) {
+        lept_free((lept_value*)lept_context_pop(c, sizeof(lept_value)));
+    }
+    return ret;
 }
 
 static int lept_parse_value(lept_context* c, lept_value* v) {
@@ -253,6 +267,13 @@ void lept_free(lept_value* v) {
     assert(v != NULL);
     if (v->type == LEPT_STRING)
         free(v->u.s.s);
+    if (v->type == LEPT_ARRAY) {
+        for (size_t i = 0, len = v->u.a.size; i < len; ++i) {
+            lept_free(&v->u.a.e[i]);
+        }
+        //
+        free(v->u.a.e);
+    }
     v->type = LEPT_NULL;
 }
 
